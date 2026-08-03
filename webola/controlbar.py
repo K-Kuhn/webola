@@ -33,7 +33,8 @@ class FileSelector(QObject):
             return None, file
         else:
             i = QFileInfo(file)
-            assert i.suffix() == self.type
+            if i.suffix().lower() != self.type.lower():
+                i = QFileInfo("%s.%s" % (file, self.type))
             return i.path(), i.fileName()
         
     def file(self, dialog=True):
