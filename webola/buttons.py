@@ -1,5 +1,4 @@
-from PyQt5.Qt import Qt, QPushButton, QLabel, QVBoxLayout, QToolButton, QIcon
-from webola.utils import is_linux
+from PyQt5.Qt import Qt, QPushButton, QLabel, QVBoxLayout, QToolButton, QIcon, QFontMetrics
 
 class ToolButton(QToolButton):
     def __init__(self, name, slot=None, tip=None, parent=None):
@@ -43,15 +42,16 @@ class SubtitleButton(NoFocusButton):
         self.setLayout(v)
 
     def scale_fonts(self, new):
-        if is_linux():
-            self.setMinimumHeight(round(45+5*(new-10))) # 10pt => 45, 12pt => 55
-        else:
-            self.setMinimumHeight(round(70+5*(new-10))) # 10pt => 70, 12pt => 80 
-        
         for w,fac in zip((self.main, self.sub),(1.125, 0.8)):
             f = w.font()
-            f.setPointSize(round(new*fac)) 
+            f.setPointSize(round(new*fac))
             w.setFont(f)
+
+        # measure actual rendered text height instead of guessing per-OS pixel offsets,
+        # so labels never get clipped when the system's default font/DPI differs
+        padding = 10
+        height  = QFontMetrics(self.main.font()).height() + QFontMetrics(self.sub.font()).height() + padding
+        self.setMinimumHeight(height)
 
     def setText(self, text, sub=None):
         self.main.setText(text)
