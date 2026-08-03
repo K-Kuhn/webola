@@ -36,6 +36,7 @@ class SubtitleButton(NoFocusButton):
         self.sub.setAlignment(Qt.AlignTop)        
         
         v = QVBoxLayout(self)
+        v.setContentsMargins(0, 0, 0, 0)
         v.setSpacing(0)
         v.addWidget(self.main)
         v.addWidget(self.sub )

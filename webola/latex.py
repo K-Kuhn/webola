@@ -75,9 +75,9 @@ def prepare_to_run_latex(tex,backup,pdf,formats):
         to_do = []
         
         pdffile = tex.with_suffix('.pdf')
-        nodiff  = filecmp.cmp(backup,tex, shallow=False)
-                
-        if backup and nodiff and pdffile.exists():
+        nodiff  = backup is not None and filecmp.cmp(backup, tex, shallow=False)
+
+        if nodiff and pdffile.exists():
             print(f"[INFO] No need to run LaTeX on unchanged file '{tex}' ...")
         else:
             tex_tmp = tex.parent / 'tex-tmp'
