@@ -53,11 +53,11 @@ class FileSelector(QObject):
         file = self.file(dialog=False) or ""
         name = QFileDialog.getSaveFileName(self.edit, 'Ergebnisliste auswählen ...', file, select)[0]
         
-        if name == '': 
+        if name == '':
             return None
         else:
             self.set_filename_and_path(name)
-            return name
+            return self.file(dialog=False)
         
     def set_filename_and_path(self, name):
         if name == '': return None
