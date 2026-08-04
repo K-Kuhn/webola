@@ -69,13 +69,11 @@ class ExportThread(QThread):
                 return
 
 def get_urkunden_images():
-    images = load_saved_images()
-    if not images.valid():
-        dlg = UrkundenImagesDialog(images)
-        if dlg.exec() != QDialog.Accepted:
-            return None
-        images = dlg.images()
-        save_images(images)
+    dlg = UrkundenImagesDialog(load_saved_images())
+    if dlg.exec() != QDialog.Accepted:
+        return None
+    images = dlg.images()
+    save_images(images)
     return images
 
 def export_urkunden_pdf(wettkampf, xlsx, control):
