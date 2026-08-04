@@ -207,17 +207,11 @@ class ControlBar(HBoxContainer):
         maybe_line()
         self.exit     = self.add( NoFocusButton('Beenden', lambda: True), tooltip="Programm beenden" )        
 
+        self.format.addItem('XLSX+URKUNDEN')  # native PDF generation, no LaTeX needed
         if have_latex():
             self.format.addItem('XLSX+TEX+PDF')
         else:
-            self.template      .hide()
-            self.mode          .hide()
-            self.strafen       .hide()
-            self.maxres_einzel .hide()
-            self.maxres_staffel.hide() 
-            self.staffel       .hide()
-            self.teamname      .hide()
-            self.max_penalty   .hide()
+            self.template.hide()  # only relevant to the LaTeX-based templates
 
         self.xlsx.do_export.connect(lambda: self.export.click())
         self.template.currentIndexChanged.connect(self.set_default_parameters)

@@ -3,6 +3,7 @@ from datetime import datetime
 from webola.xlsx import xls_export_zielliste
 from types import SimpleNamespace
 from webola.latex import prepare_latex_export_urkunden, tex_export_zielliste
+from webola.pdf_urkunde import generate_urkunden_pdf
 import subprocess
 from PyQt5.Qt import QThread, QTimer, QMessageBox, QIcon
 import shutil
@@ -66,20 +67,38 @@ class ExportThread(QThread):
                 self.error = f'Der Befehl<br><dd>{" ".join(cmds)}</dd><br>konnte nicht ausgeführt werden:<br><dd>{str(e)}</dd>'
                 return
 
+def export_urkunden_pdf(wettkampf, xlsx, control):
+    modus = SimpleNamespace(
+        mode     = control.mode    .currentText(),
+        strafen  = control.strafen .currentText(),
+        teamname = control.teamname.currentText(),
+        staffel  = control.staffel .currentText())
+    maxres = MaxRes(control.maxres_einzel.value(), control.maxres_staffel.value())
+    out    = Path(xlsx).with_name(Path(xlsx).stem + '_Urkunden.pdf')
+    try:
+        generate_urkunden_pdf(wettkampf, out, maxres, modus)
+    except Exception as e:
+        box = QMessageBox(QMessageBox.Critical, 'Export-Fehler',
+                           f'Die Urkunden-PDF-Datei konnte nicht erstellt werden:<br><dd>{e}</dd>')
+        box.setWindowIcon(QIcon(':/webola.png'))
+        box.exec()
+
 def run_export(wettkampf, tabs, control):
         xlsx    = control.xlsx.file()
         formate = control.format.currentText().split('+')
 
         if xlsx:
-            tex   = Path(xlsx).with_suffix('.tex').relative_to(Path.cwd())
             head  = tabs.sheet.controls.get_header()
             datum = tabs.sheet.controls.date.text()
             datum = f" am {datum}" if datum else ''
 
             ms   = xls_export_zielliste(wettkampf, xlsx, head+datum, tabs)
-            
+
+            if 'URKUNDEN' in formate:
+                export_urkunden_pdf(wettkampf, xlsx, control)
+
             if 'TEX' in formate:
-                
+                tex    = Path(xlsx).with_suffix('.tex').relative_to(Path.cwd())
                 to_do  = tex_export_zielliste (wettkampf, tex, head, formate)
                 
                 to_do += prepare_latex_export_urkunden(Path(xlsx), ms, SimpleNamespace(

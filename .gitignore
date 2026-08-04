@@ -8,3 +8,11 @@ __pycache__/
 venv*/
 .venv/
 *.tex
+/*.pdf
+/*_Urkunden.pdf
+
+# Urkunde layout images contain real signatures/personal data -- keep local only,
+# place them in resources/ by hand before building.
+resources/head.png
+resources/bottom left.png
+resources/bottom right.png
