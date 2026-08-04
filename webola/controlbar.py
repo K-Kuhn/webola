@@ -38,11 +38,10 @@ class FileSelector(QObject):
             return i.path(), i.fileName()
         
     def file(self, dialog=True):
-        if self.path is None:
-            if dialog:
-                return self.open_file()
-            else:
-                return None
+        if dialog:
+            return self.open_file()
+        elif self.path is None:
+            return None
         else:
             info = QFileInfo(QDir(self.path), self.edit.text())
             return info.absoluteFilePath()
