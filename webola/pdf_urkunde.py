@@ -1,5 +1,7 @@
 from pathlib import Path
+from dataclasses import dataclass
 
+from PyQt5.QtCore import QSettings
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas
@@ -7,11 +9,6 @@ from reportlab.pdfgen import canvas
 from webola.database import Team
 from webola.statistik import collect_data
 from webola.utils import time2str
-
-RESOURCES    = Path(__file__).parent.parent / 'resources'
-HEAD_IMAGE   = RESOURCES / 'head.png'
-LEFT_IMAGE   = RESOURCES / 'bottom left.png'
-RIGHT_IMAGE  = RESOURCES / 'bottom right.png'
 
 MM           = 72 / 25.4
 MARGIN       = 20 * MM
@@ -25,6 +22,31 @@ LINE_HEIGHT  = 1.25      # multiple of font size used as line height
 MIN_SCALE    = 0.7
 MAX_SCALE    = 2.2
 FILL_FACTOR  = 0.90      # fraction of available space the scaled block should target
+
+
+@dataclass
+class UrkundeImages:
+    head:  str
+    left:  str
+    right: str
+
+    def valid(self):
+        return all(p and Path(p).is_file() for p in (self.head, self.left, self.right))
+
+
+def load_saved_images():
+    s = QSettings('webola', 'webola')
+    return UrkundeImages(
+        head  = s.value('urkunde/head' , ''),
+        left  = s.value('urkunde/left' , ''),
+        right = s.value('urkunde/right', ''))
+
+
+def save_images(images):
+    s = QSettings('webola', 'webola')
+    s.setValue('urkunde/head' , images.head )
+    s.setValue('urkunde/left' , images.left )
+    s.setValue('urkunde/right', images.right)
 
 
 def _draw_image(c, path, x, y, width, anchor='left'):
@@ -53,9 +75,9 @@ def _row(c, y, columns, font, size, color=(0, 0, 0)):
         c.drawCentredString(x, y, text)
 
 
-def _draw_header(c):
+def _draw_header(c, images):
     top = A4[1] - MARGIN
-    head_h = _draw_image(c, HEAD_IMAGE, A4[0] / 2, top - HEAD_WIDTH * 676 / 897, HEAD_WIDTH, anchor='center')
+    head_h = _draw_image(c, images.head, A4[0] / 2, top - HEAD_WIDTH * 676 / 897, HEAD_WIDTH, anchor='center')
     y = top - head_h - 16 * MM
     _centered(c, 'URKUNDE', y, FONT_BOLD, 36)
     y -= 13 * MM
@@ -72,11 +94,10 @@ def _draw_wettkampf_info(c, y, wettkampf):
     return y - 10 * MM
 
 
-def _draw_bottom_images(c):
+def _draw_bottom_images(c, images):
     y = MARGIN
-    _draw_image(c, LEFT_IMAGE,  MARGIN,          y, BOTTOM_WIDTH, anchor='left')
-    right_h = _draw_image(c, RIGHT_IMAGE, A4[0] - MARGIN, y, BOTTOM_WIDTH, anchor='right')
-    left_h  = BOTTOM_WIDTH * 518 / 618
+    left_h  = _draw_image(c, images.left,  MARGIN,          y, BOTTOM_WIDTH, anchor='left')
+    right_h = _draw_image(c, images.right, A4[0] - MARGIN,  y, BOTTOM_WIDTH, anchor='right')
     return y + max(left_h, right_h) + 12 * MM
 
 
@@ -153,10 +174,10 @@ def _result_items(schuss, fehler, modus, penalty_text):
     return items
 
 
-def draw_einzel_urkunde(c, wettkampf, team, pos, klasse, modus):
-    y = _draw_header(c)
+def draw_einzel_urkunde(c, wettkampf, team, pos, klasse, modus, images):
+    y = _draw_header(c, images)
     y = _draw_wettkampf_info(c, y, wettkampf)
-    bottom_y = _draw_bottom_images(c)
+    bottom_y = _draw_bottom_images(c, images)
 
     name, verein = team.get_name_verein()
     schuss, fehler = _team_result(team)
@@ -171,10 +192,10 @@ def draw_einzel_urkunde(c, wettkampf, team, pos, klasse, modus):
     _render_block(c, items, y, bottom_y)
 
 
-def draw_starter_urkunde(c, wettkampf, starter, team, pos, klasse, modus):
-    y = _draw_header(c)
+def draw_starter_urkunde(c, wettkampf, starter, team, pos, klasse, modus, images):
+    y = _draw_header(c, images)
     y = _draw_wettkampf_info(c, y, wettkampf)
-    bottom_y = _draw_bottom_images(c)
+    bottom_y = _draw_bottom_images(c, images)
 
     schuss = team.lauf.anzahl_schiessen * team.lauf.anzahl_pfeile
 
@@ -188,10 +209,10 @@ def draw_starter_urkunde(c, wettkampf, starter, team, pos, klasse, modus):
     _render_block(c, items, y, bottom_y)
 
 
-def draw_team_urkunde(c, wettkampf, team, pos, klasse, modus):
-    y = _draw_header(c)
+def draw_team_urkunde(c, wettkampf, team, pos, klasse, modus, images):
+    y = _draw_header(c, images)
     y = _draw_wettkampf_info(c, y, wettkampf)
-    bottom_y = _draw_bottom_images(c)
+    bottom_y = _draw_bottom_images(c, images)
 
     name, vereine = team.get_name_verein()
     zeigen = name if modus.teamname == 'mit Teamname' else vereine
@@ -214,6 +235,27 @@ def draw_team_urkunde(c, wettkampf, team, pos, klasse, modus):
     _render_block(c, items, y, bottom_y)
 
 
+def draw_sample_urkunde(c, images):
+    """A representative placeholder certificate, used for the layout preview
+    before any results necessarily exist."""
+    class _Wettkampf:
+        name = '13. Werderaner Bogenlauf'
+        datum = '4. August 2026'
+        ort   = 'Werder (Havel)'
+
+    y = _draw_header(c, images)
+    y = _draw_wettkampf_info(c, y, _Wettkampf())
+    bottom_y = _draw_bottom_images(c, images)
+
+    items  = _platz_und_klasse_items(1, 'Cadet (M) standard')
+    items += [_text_item('Max Mustermann', FONT_BOLD, 20, gap_after=5)]
+    items += [_text_item('SV Werder', FONT, 13, gap_after=8)]
+    items += [_text_item('01:57.3', FONT_BOLD, 18, gap_after=5)]
+    items += [_text_item('10 / 12 Treffer', FONT, 13, gap_after=6)]
+
+    _render_block(c, items, y, bottom_y)
+
+
 def collect_urkunden(wettkampf, maxres):
     for klasse in collect_data(wettkampf):
         if not klasse.is_wertung_done():
@@ -225,20 +267,28 @@ def collect_urkunden(wettkampf, maxres):
                 pos += 1 if team.is_ranked() else 0
 
 
-def generate_urkunden_pdf(wettkampf, out_path, maxres, modus):
+def generate_preview_pdf(out_path, images):
+    c = canvas.Canvas(str(out_path), pagesize=A4)
+    draw_sample_urkunde(c, images)
+    c.showPage()
+    c.save()
+    return out_path
+
+
+def generate_urkunden_pdf(wettkampf, out_path, maxres, modus, images):
     c = canvas.Canvas(str(out_path), pagesize=A4)
 
     for team, pos, klasse in collect_urkunden(wettkampf, maxres):
         if team.ist_staffel():
             if modus.staffel in ('Team', 'Einzeln+Team'):
-                draw_team_urkunde(c, wettkampf, team, pos, klasse, modus)
+                draw_team_urkunde(c, wettkampf, team, pos, klasse, modus, images)
                 c.showPage()
             if modus.staffel in ('Einzeln', 'Einzeln+Team'):
                 for starter in team.liste():
-                    draw_starter_urkunde(c, wettkampf, starter, team, pos, klasse, modus)
+                    draw_starter_urkunde(c, wettkampf, starter, team, pos, klasse, modus, images)
                     c.showPage()
         else:
-            draw_einzel_urkunde(c, wettkampf, team, pos, klasse, modus)
+            draw_einzel_urkunde(c, wettkampf, team, pos, klasse, modus, images)
             c.showPage()
 
     c.save()

@@ -3,9 +3,10 @@ from datetime import datetime
 from webola.xlsx import xls_export_zielliste
 from types import SimpleNamespace
 from webola.latex import prepare_latex_export_urkunden, tex_export_zielliste
-from webola.pdf_urkunde import generate_urkunden_pdf
+from webola.pdf_urkunde import generate_urkunden_pdf, load_saved_images, save_images
+from webola.urkunde_dialogs import UrkundenImagesDialog, UrkundenPreviewDialog
 import subprocess
-from PyQt5.Qt import QThread, QTimer, QMessageBox, QIcon
+from PyQt5.Qt import QThread, QTimer, QMessageBox, QIcon, QDialog
 import shutil
 
 class MaxRes():
@@ -67,7 +68,24 @@ class ExportThread(QThread):
                 self.error = f'Der Befehl<br><dd>{" ".join(cmds)}</dd><br>konnte nicht ausgeführt werden:<br><dd>{str(e)}</dd>'
                 return
 
+def get_urkunden_images():
+    images = load_saved_images()
+    if not images.valid():
+        dlg = UrkundenImagesDialog(images)
+        if dlg.exec() != QDialog.Accepted:
+            return None
+        images = dlg.images()
+        save_images(images)
+    return images
+
 def export_urkunden_pdf(wettkampf, xlsx, control):
+    images = get_urkunden_images()
+    if images is None:
+        return
+
+    if UrkundenPreviewDialog(images).exec() != QDialog.Accepted:
+        return
+
     modus = SimpleNamespace(
         mode     = control.mode    .currentText(),
         strafen  = control.strafen .currentText(),
@@ -76,7 +94,7 @@ def export_urkunden_pdf(wettkampf, xlsx, control):
     maxres = MaxRes(control.maxres_einzel.value(), control.maxres_staffel.value())
     out    = Path(xlsx).with_name(Path(xlsx).stem + '_Urkunden.pdf')
     try:
-        generate_urkunden_pdf(wettkampf, out, maxres, modus)
+        generate_urkunden_pdf(wettkampf, out, maxres, modus, images)
     except Exception as e:
         box = QMessageBox(QMessageBox.Critical, 'Export-Fehler',
                            f'Die Urkunden-PDF-Datei konnte nicht erstellt werden:<br><dd>{e}</dd>')

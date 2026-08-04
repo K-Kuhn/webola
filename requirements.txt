@@ -4,3 +4,4 @@ psutil
 PyQt5
 PyQt5_sip
 reportlab
+pymupdf
