@@ -112,10 +112,11 @@ def get_urkunden_template():
 def export_urkunden_text_pdf(wettkampf, xlsx, control):
     template = get_urkunden_template()
     if template is None:
-        return
+        return  # user cancelled entirely
 
-    if UrkundenTextPreviewDialog(template).exec() != QDialog.Accepted:
-        return
+    if template:  # a template was chosen -- show the preview; empty means skip it
+        if UrkundenTextPreviewDialog(template).exec() != QDialog.Accepted:
+            return
 
     modus = SimpleNamespace(
         mode     = control.mode    .currentText(),

@@ -119,24 +119,27 @@ class UrkundenPreviewDialog(QDialog):
 
 
 class UrkundenTemplateDialog(QDialog):
-    """Picks the pre-printed template PDF -- used ONLY locally to render a
-    WYSIWYG preview of where the text will land. Never read again at
-    generation time and never embedded in the generated output."""
+    """Optionally picks the pre-printed template PDF -- used ONLY locally to
+    render a WYSIWYG preview of where the text will land. Never read again
+    at generation time and never embedded in the generated output. Leaving
+    it empty and clicking OK just skips the preview and generates directly."""
 
     def __init__(self, initial):
         QDialog.__init__(self)
         self.setWindowIcon(QIcon(":/webola.png"))
-        self.setWindowTitle('Urkunden-Vordruck: PDF wählen')
+        self.setWindowTitle('Urkunden-Vordruck: PDF wählen (optional)')
 
         self.template = ImageRow('Vordruck (PDF)', initial, self, file_filter=TEMPLATE_FILTER)
 
-        info = QLabel('Für die Vorschau wird die Vordruck-PDF-Datei benötigt (bereits bedrucktes Papier: '
-                       'Kopfbild, "URKUNDE"-Schriftzug, Unterschriften). Beim eigentlichen Erstellen der '
-                       'Urkunden wird nur der Text erzeugt -- die Vordruck-PDF wird dafür nicht benötigt.')
+        info = QLabel('Optional: Vordruck-PDF-Datei (bereits bedrucktes Papier: Kopfbild, '
+                       '"URKUNDE"-Schriftzug, Unterschriften) für eine Vorschau, wo der Text landen wird. '
+                       'Beim eigentlichen Erstellen der Urkunden wird ohnehin nur der Text erzeugt -- '
+                       'die Vordruck-PDF wird dafür nicht benötigt. Leer lassen und OK klicken, um direkt '
+                       'ohne Vorschau zu erstellen.')
         info.setWordWrap(True)
 
         button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        button_box.accepted.connect(self.try_accept)
+        button_box.accepted.connect(self.accept)
         button_box.rejected.connect(self.reject)
         for b in button_box.buttons():
             b.setFocusPolicy(Qt.NoFocus)
@@ -146,11 +149,6 @@ class UrkundenTemplateDialog(QDialog):
         layout.addLayout(self.template)
         layout.addWidget(button_box)
         self.setLayout(layout)
-
-    def try_accept(self):
-        if not self.path():
-            return
-        self.accept()
 
     def path(self):
         return self.template.path()
