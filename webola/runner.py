@@ -3,8 +3,10 @@ from datetime import datetime
 from webola.xlsx import xls_export_zielliste
 from types import SimpleNamespace
 from webola.latex import prepare_latex_export_urkunden, tex_export_zielliste
-from webola.pdf_urkunde import generate_urkunden_pdf, load_saved_images, save_images
-from webola.urkunde_dialogs import UrkundenImagesDialog, UrkundenPreviewDialog
+from webola.pdf_urkunde import generate_urkunden_pdf, load_saved_images, save_images, \
+    generate_urkunden_text_pdf, load_saved_template, save_template
+from webola.urkunde_dialogs import UrkundenImagesDialog, UrkundenPreviewDialog, \
+    UrkundenTemplateDialog, UrkundenTextPreviewDialog
 import subprocess
 from PyQt5.Qt import QThread, QTimer, QMessageBox, QIcon, QDialog
 import shutil
@@ -99,6 +101,37 @@ def export_urkunden_pdf(wettkampf, xlsx, control):
         box.setWindowIcon(QIcon(':/webola.png'))
         box.exec()
 
+def get_urkunden_template():
+    dlg = UrkundenTemplateDialog(load_saved_template())
+    if dlg.exec() != QDialog.Accepted:
+        return None
+    template = dlg.path()
+    save_template(template)
+    return template
+
+def export_urkunden_text_pdf(wettkampf, xlsx, control):
+    template = get_urkunden_template()
+    if template is None:
+        return
+
+    if UrkundenTextPreviewDialog(template).exec() != QDialog.Accepted:
+        return
+
+    modus = SimpleNamespace(
+        mode     = control.mode    .currentText(),
+        strafen  = control.strafen .currentText(),
+        teamname = control.teamname.currentText(),
+        staffel  = control.staffel .currentText())
+    maxres = MaxRes(control.maxres_einzel.value(), control.maxres_staffel.value())
+    out    = Path(xlsx).with_name(Path(xlsx).stem + '_Urkunden_Text.pdf')
+    try:
+        generate_urkunden_text_pdf(wettkampf, out, maxres, modus)
+    except Exception as e:
+        box = QMessageBox(QMessageBox.Critical, 'Export-Fehler',
+                           f'Die Urkunden-Text-PDF-Datei konnte nicht erstellt werden:<br><dd>{e}</dd>')
+        box.setWindowIcon(QIcon(':/webola.png'))
+        box.exec()
+
 def run_export(wettkampf, tabs, control):
         xlsx    = control.xlsx.file()
         formate = control.format.currentText().split('+')
@@ -112,6 +145,9 @@ def run_export(wettkampf, tabs, control):
 
             if 'URKUNDEN' in formate:
                 export_urkunden_pdf(wettkampf, xlsx, control)
+
+            if 'URKUNDE-TEXT' in formate:
+                export_urkunden_text_pdf(wettkampf, xlsx, control)
 
             if 'TEX' in formate:
                 tex    = Path(xlsx).with_suffix('.tex').relative_to(Path.cwd())

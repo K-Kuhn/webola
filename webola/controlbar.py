@@ -206,7 +206,8 @@ class ControlBar(HBoxContainer):
         maybe_line()
         self.exit     = self.add( NoFocusButton('Beenden', lambda: True), tooltip="Programm beenden" )        
 
-        self.format.addItem('XLSX+URKUNDEN')  # native PDF generation, no LaTeX needed
+        self.format.addItem('XLSX+URKUNDEN')     # native PDF generation, no LaTeX needed
+        self.format.addItem('XLSX+URKUNDE-TEXT') # text only, printed onto a pre-printed template sheet
         if have_latex():
             self.format.addItem('XLSX+TEX+PDF')
         else:

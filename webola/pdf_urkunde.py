@@ -1,3 +1,4 @@
+import io
 from pathlib import Path
 from dataclasses import dataclass
 
@@ -5,10 +6,18 @@ from PyQt5.QtCore import QSettings
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas
+import fitz
 
 from webola.database import Team
 from webola.statistik import collect_data
 from webola.utils import time2str
+
+# Blank content zone measured directly from resources/Urkunde_empty.pdf (a single
+# flattened raster scan with no separate text/image objects to read positions from):
+# scanned the rendered page pixel-row by pixel-row for a large gap between the
+# printed "URKUNDE" stencil and the two signature images at the bottom.
+TEXT_ONLY_TOP    = 521
+TEXT_ONLY_BOTTOM = 223
 
 MM           = 72 / 25.4
 MARGIN       = 20 * MM
@@ -47,6 +56,14 @@ def save_images(images):
     s.setValue('urkunde/head' , images.head )
     s.setValue('urkunde/left' , images.left )
     s.setValue('urkunde/right', images.right)
+
+
+def load_saved_template():
+    return QSettings('webola', 'webola').value('urkunde/template_pdf', '')
+
+
+def save_template(path):
+    QSettings('webola', 'webola').setValue('urkunde/template_pdf', path)
 
 
 def _draw_image(c, path, x, y, width, anchor='left'):
@@ -174,6 +191,14 @@ def _result_items(schuss, fehler, modus, penalty_text):
     return items
 
 
+def _wettkampf_info_items(wettkampf):
+    info = wettkampf.datum
+    if wettkampf.ort:
+        info += f'  --  {wettkampf.ort}'
+    return [_text_item(wettkampf.name or '', FONT_BOLD, 13, gap_after=3),
+            _text_item(info, FONT, 9, gap_after=8)]
+
+
 def draw_einzel_urkunde(c, wettkampf, team, pos, klasse, modus, images):
     y = _draw_header(c, images)
     y = _draw_wettkampf_info(c, y, wettkampf)
@@ -233,6 +258,129 @@ def draw_team_urkunde(c, wettkampf, team, pos, klasse, modus, images):
         items.append(_row_item(cells, FONT, 11, gap_after=3))
 
     _render_block(c, items, y, bottom_y)
+
+
+def draw_einzel_text_only(c, wettkampf, team, pos, klasse, modus):
+    name, verein = team.get_name_verein()
+    schuss, fehler = _team_result(team)
+
+    items  = _wettkampf_info_items(wettkampf)
+    items += _platz_und_klasse_items(pos, klasse.name)
+    items += [_text_item(name, FONT_BOLD, 20, gap_after=5)]
+    if verein:
+        items += [_text_item(verein, FONT, 13, gap_after=8)]
+    items += [_text_item(time2str(team.zeit()), FONT_BOLD, 18, gap_after=5)]
+    items += _result_items(schuss, fehler, modus, _strafen_text(team))
+
+    _render_block(c, items, TEXT_ONLY_TOP, TEXT_ONLY_BOTTOM)
+
+
+def draw_starter_text_only(c, wettkampf, starter, team, pos, klasse, modus):
+    schuss = team.lauf.anzahl_schiessen * team.lauf.anzahl_pfeile
+
+    items  = _wettkampf_info_items(wettkampf)
+    items += _platz_und_klasse_items(pos, klasse.name)
+    items += [_text_item(starter.get_name(), FONT_BOLD, 20, gap_after=5)]
+    if starter.verein:
+        items += [_text_item(starter.verein, FONT, 13, gap_after=8)]
+    items += [_text_item(time2str(starter.zeit()), FONT_BOLD, 18, gap_after=5)]
+    items += _result_items(schuss, starter.fehler or 0, modus, _strafen_text(starter))
+
+    _render_block(c, items, TEXT_ONLY_TOP, TEXT_ONLY_BOTTOM)
+
+
+def draw_team_text_only(c, wettkampf, team, pos, klasse, modus):
+    name, vereine = team.get_name_verein()
+    zeigen = name if modus.teamname == 'mit Teamname' else vereine
+    schuss, fehler = _team_result(team)
+
+    items  = _wettkampf_info_items(wettkampf)
+    items += _platz_und_klasse_items(pos, klasse.name)
+    items += [_text_item(zeigen, FONT_BOLD, 18, gap_after=8)]
+    items += [_text_item(time2str(team.zeit()), FONT_BOLD, 18, gap_after=5)]
+    items += _result_items(schuss, fehler, modus, _strafen_text(team))
+
+    items.append(_text_item('', FONT, 6, gap_after=4))
+
+    cx = A4[0] / 2
+    for starter in team.liste():
+        cells = [(cx - 60 * MM, starter.get_name()),
+                 (cx,           starter.verein or ''),
+                 (cx + 60 * MM, time2str(starter.zeit()))]
+        items.append(_row_item(cells, FONT, 11, gap_after=3))
+
+    _render_block(c, items, TEXT_ONLY_TOP, TEXT_ONLY_BOTTOM)
+
+
+def draw_sample_text_only(c):
+    class _Wettkampf:
+        name = '13. Werderaner Bogenlauf'
+        datum = '4. August 2026'
+        ort   = 'Werder (Havel)'
+
+    items  = _wettkampf_info_items(_Wettkampf())
+    items += _platz_und_klasse_items(1, 'Cadet (M) standard')
+    items += [_text_item('Max Mustermann', FONT_BOLD, 20, gap_after=5)]
+    items += [_text_item('SV Werder', FONT, 13, gap_after=8)]
+    items += [_text_item('01:57.3', FONT_BOLD, 18, gap_after=5)]
+    items += [_text_item('10 / 12 Treffer', FONT, 13, gap_after=6)]
+
+    _render_block(c, items, TEXT_ONLY_TOP, TEXT_ONLY_BOTTOM)
+
+
+def _overlay_pdf_bytes(draw_fn):
+    buf = io.BytesIO()
+    c = canvas.Canvas(buf, pagesize=A4)
+    draw_fn(c)
+    c.showPage()
+    c.save()
+    return buf.getvalue()
+
+
+def generate_urkunden_text_pdf(wettkampf, out_path, maxres, modus):
+    """Text-only certificates, meant to be printed onto the pre-printed paper
+    (head/bottom images, "URKUNDE" title) directly -- no template/images are
+    read or embedded here, the printed sheet already has them."""
+    c = canvas.Canvas(str(out_path), pagesize=A4)
+
+    for team, pos, klasse in collect_urkunden(wettkampf, maxres):
+        if team.ist_staffel():
+            if modus.staffel in ('Team', 'Einzeln+Team'):
+                draw_team_text_only(c, wettkampf, team, pos, klasse, modus)
+                c.showPage()
+            if modus.staffel in ('Einzeln', 'Einzeln+Team'):
+                for starter in team.liste():
+                    draw_starter_text_only(c, wettkampf, starter, team, pos, klasse, modus)
+                    c.showPage()
+        else:
+            draw_einzel_text_only(c, wettkampf, team, pos, klasse, modus)
+            c.showPage()
+
+    c.save()
+    return out_path
+
+
+def render_text_on_template_preview(template_path, zoom=2.0):
+    """Composite the sample text-only certificate onto the (local-only, never
+    embedded in generated output) template PDF for a WYSIWYG preview -- pure
+    raster compositing via Pillow's multiply blend (works cleanly for black
+    text on a light background, no PDF-level merging involved)."""
+    from PIL import Image, ImageChops
+
+    template_doc = fitz.open(str(template_path))
+    template_pix = template_doc[0].get_pixmap(matrix=fitz.Matrix(zoom, zoom))
+    template_img = Image.frombytes('RGB', (template_pix.width, template_pix.height), template_pix.samples)
+    template_doc.close()
+
+    text_doc = fitz.open(stream=_overlay_pdf_bytes(draw_sample_text_only), filetype='pdf')
+    text_pix = text_doc[0].get_pixmap(matrix=fitz.Matrix(zoom, zoom))
+    text_img = Image.frombytes('RGB', (text_pix.width, text_pix.height), text_pix.samples)
+    text_doc.close()
+
+    if text_img.size != template_img.size:
+        text_img = text_img.resize(template_img.size)
+
+    return ImageChops.multiply(template_img, text_img)
 
 
 def draw_sample_urkunde(c, images):

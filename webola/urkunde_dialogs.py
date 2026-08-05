@@ -5,24 +5,28 @@ from PyQt5.Qt import Qt, QDialog, QDialogButtonBox, QVBoxLayout, QHBoxLayout, QL
     QLabel, QFileDialog, QPixmap, QImage, QIcon
 
 from webola.buttons import NoFocusButton
-from webola.pdf_urkunde import UrkundeImages, generate_preview_pdf
+from webola.pdf_urkunde import UrkundeImages, generate_preview_pdf, render_text_on_template_preview
 
-IMAGE_FILTER = 'Bilder (*.png *.jpg *.jpeg)'
+IMAGE_FILTER    = 'Bilder (*.png *.jpg *.jpeg)'
+TEMPLATE_FILTER = 'PDF Dateien (*.pdf)'
 
 
 class ImageRow(QHBoxLayout):
-    def __init__(self, label, initial, parent):
+    def __init__(self, label, initial, parent, file_filter=IMAGE_FILTER):
         QHBoxLayout.__init__(self)
         self.edit = QLineEdit(initial)
         self.edit.setReadOnly(True)
-        browse = NoFocusButton('...', lambda: self.browse(label, parent))
+        self.label  = label
+        self.parent = parent
+        self.filter = file_filter
+        browse = NoFocusButton('...', self.browse)
 
         self.addWidget(QLabel(label))
         self.addWidget(self.edit, 1)
         self.addWidget(browse)
 
-    def browse(self, label, parent):
-        name, _ = QFileDialog.getOpenFileName(parent, f'{label} wählen ...', self.edit.text(), IMAGE_FILTER)
+    def browse(self):
+        name, _ = QFileDialog.getOpenFileName(self.parent, f'{self.label} wählen ...', self.edit.text(), self.filter)
         if name:
             self.edit.setText(name)
 
@@ -112,3 +116,87 @@ class UrkundenPreviewDialog(QDialog):
             if pixmap.height() > screen_height:
                 pixmap = pixmap.scaledToHeight(screen_height, Qt.SmoothTransformation)
             return pixmap
+
+
+class UrkundenTemplateDialog(QDialog):
+    """Picks the pre-printed template PDF -- used ONLY locally to render a
+    WYSIWYG preview of where the text will land. Never read again at
+    generation time and never embedded in the generated output."""
+
+    def __init__(self, initial):
+        QDialog.__init__(self)
+        self.setWindowIcon(QIcon(":/webola.png"))
+        self.setWindowTitle('Urkunden-Vordruck: PDF wählen')
+
+        self.template = ImageRow('Vordruck (PDF)', initial, self, file_filter=TEMPLATE_FILTER)
+
+        info = QLabel('Für die Vorschau wird die Vordruck-PDF-Datei benötigt (bereits bedrucktes Papier: '
+                       'Kopfbild, "URKUNDE"-Schriftzug, Unterschriften). Beim eigentlichen Erstellen der '
+                       'Urkunden wird nur der Text erzeugt -- die Vordruck-PDF wird dafür nicht benötigt.')
+        info.setWordWrap(True)
+
+        button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        button_box.accepted.connect(self.try_accept)
+        button_box.rejected.connect(self.reject)
+        for b in button_box.buttons():
+            b.setFocusPolicy(Qt.NoFocus)
+
+        layout = QVBoxLayout()
+        layout.addWidget(info)
+        layout.addLayout(self.template)
+        layout.addWidget(button_box)
+        self.setLayout(layout)
+
+    def try_accept(self):
+        if not self.path():
+            return
+        self.accept()
+
+    def path(self):
+        return self.template.path()
+
+
+class UrkundenTextPreviewDialog(QDialog):
+    def __init__(self, template_path):
+        QDialog.__init__(self)
+        self.setWindowIcon(QIcon(":/webola.png"))
+        self.setWindowTitle('Urkunden-Vorschau (Text auf Vordruck)')
+
+        preview = QLabel()
+        preview.setAlignment(Qt.AlignCenter)
+        pixmap = self._render_preview(template_path)
+        if pixmap:
+            preview.setPixmap(pixmap)
+        else:
+            preview.setText('Vorschau konnte nicht erzeugt werden.')
+
+        note = QLabel('Nur eine Vorschau -- beim Erstellen wird ausschließlich der Text erzeugt, '
+                       'nicht der Vordruck selbst.')
+        note.setWordWrap(True)
+
+        button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        button_box.button(QDialogButtonBox.Ok).setText('Urkunden erstellen')
+        button_box.accepted.connect(self.accept)
+        button_box.rejected.connect(self.reject)
+        for b in button_box.buttons():
+            b.setFocusPolicy(Qt.NoFocus)
+
+        layout = QVBoxLayout()
+        layout.addWidget(preview)
+        layout.addWidget(note)
+        layout.addWidget(button_box)
+        self.setLayout(layout)
+
+    def _render_preview(self, template_path):
+        try:
+            img = render_text_on_template_preview(template_path)
+        except Exception:
+            return None
+
+        qimg = QImage(img.tobytes(), img.width, img.height, img.width * 3, QImage.Format_RGB888)
+        pixmap = QPixmap.fromImage(qimg.copy())
+
+        screen_height = 800
+        if pixmap.height() > screen_height:
+            pixmap = pixmap.scaledToHeight(screen_height, Qt.SmoothTransformation)
+        return pixmap
